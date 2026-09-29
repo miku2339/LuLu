@@ -41,3 +41,7 @@ DMG/LuLu.app
 DMG/*.dmg
 DMG/background.psd
 LuLu/Binaries/
+
+# Local interface preview artifacts
+/work/
+/outputs/
