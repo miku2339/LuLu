@@ -3,7 +3,19 @@
 #import "PreviewModel.h"
 #import "PreviewStyle.h"
 
-#define T(zh, en) PreviewText(zh, en)
+
+static void ApplyDirection(NSView* view)
+{
+    BOOL technical = [view.identifier isEqual:@"technical"];
+    view.userInterfaceLayoutDirection = PreviewRightToLeft() && !technical ? NSUserInterfaceLayoutDirectionRightToLeft : NSUserInterfaceLayoutDirectionLeftToRight;
+    if([view isKindOfClass:NSControl.class])
+    {
+        NSControl* control = (NSControl*)view;
+        control.baseWritingDirection = technical ? NSWritingDirectionLeftToRight : NSWritingDirectionNatural;
+        control.alignment = technical ? NSTextAlignmentLeft : NSTextAlignmentNatural;
+    }
+    for(NSView* child in view.subviews) ApplyDirection(child);
+}
 
 static NSColor* StatusColor(BOOL allowed)
 {
@@ -31,6 +43,13 @@ static NSTextField* Secondary(NSString* text)
     return field;
 }
 
+static NSTextField* Technical(NSString* text)
+{
+    NSTextField* field = Secondary(text);
+    field.identifier = @"technical";
+    return field;
+}
+
 static NSStackView* Stack(NSArray<NSView*>* views, NSUserInterfaceLayoutOrientation orientation, CGFloat spacing)
 {
     NSStackView* stack = [NSStackView stackViewWithViews:views];
@@ -38,6 +57,7 @@ static NSStackView* Stack(NSArray<NSView*>* views, NSUserInterfaceLayoutOrientat
     stack.alignment = orientation == NSUserInterfaceLayoutOrientationVertical ? NSLayoutAttributeLeading : NSLayoutAttributeCenterY;
     stack.spacing = spacing;
     stack.translatesAutoresizingMaskIntoConstraints = NO;
+    stack.userInterfaceLayoutDirection = PreviewRightToLeft() ? NSUserInterfaceLayoutDirectionRightToLeft : NSUserInterfaceLayoutDirectionLeftToRight;
     return stack;
 }
 
@@ -46,8 +66,8 @@ static void Fill(NSView* child, NSView* parent, CGFloat padding)
     child.translatesAutoresizingMaskIntoConstraints = NO;
     [parent addSubview:child];
     [NSLayoutConstraint activateConstraints:@[
-        [child.leadingAnchor constraintEqualToAnchor:parent.leadingAnchor constant:padding],
-        [child.trailingAnchor constraintEqualToAnchor:parent.trailingAnchor constant:-padding],
+        [child.leftAnchor constraintEqualToAnchor:parent.leftAnchor constant:padding],
+        [child.rightAnchor constraintEqualToAnchor:parent.rightAnchor constant:-padding],
         [child.topAnchor constraintEqualToAnchor:parent.topAnchor constant:padding],
         [child.bottomAnchor constraintEqualToAnchor:parent.bottomAnchor constant:-padding]
     ]];
@@ -143,11 +163,14 @@ static NSView* Card(NSView* contents)
 @property(nonatomic, strong) NSSearchField* search;
 @property(nonatomic, strong) NSSegmentedControl* filter;
 @property(nonatomic, strong) NSArray<PreviewRule*>* visibleRules;
+@property(nonatomic, copy) NSString* ruleQuery;
+@property(nonatomic) NSInteger ruleFilter;
+@property(nonatomic, strong) PreviewRule* ruleSelection;
 @property(nonatomic, strong) NSStackView* inspector;
 @property(nonatomic, strong) NSTextField* countLabel;
 @property(nonatomic, strong) NSTextField* emptyLabel;
 @property(nonatomic, strong) NSTextField* noticeLabel;
-@property(nonatomic, copy) NSString* lastDecision;
+@property(nonatomic, copy) NSDictionary* lastDecision;
 @property(nonatomic) NSInteger currentPage;
 @property(nonatomic, strong) NSPanel* sheet;
 @property(nonatomic, strong) NSStackView* sheetStack;
@@ -173,7 +196,7 @@ static NSView* Card(NSView* contents)
     {
         self.model = [[PreviewModel alloc] init];
         window.title = @"LuLu Interface Preview";
-        window.subtitle = T(@"介面預覽 · 範例資料", @"Interface preview · Sample data");
+        window.subtitle = PreviewText(@"Interface preview · Sample data");
         window.minSize = NSMakeSize(1000, 700);
         window.backgroundColor = PreviewCanvasColor();
         window.titlebarAppearsTransparent = YES;
@@ -186,6 +209,22 @@ static NSView* Card(NSView* contents)
     return self;
 }
 
+-(void)saveRuleViewState
+{
+    self.ruleQuery = self.search.stringValue ?: @"";
+    self.ruleFilter = MAX(0, self.filter.selectedSegment);
+    self.ruleSelection = [self selectedRule];
+}
+
+-(void)reloadLanguage
+{
+    if(self.currentPage == 1) [self saveRuleViewState];
+    for(NSView* view in self.window.contentView.subviews.copy) [view removeFromSuperview];
+    self.window.subtitle = PreviewText(@"Interface preview · Sample data");
+    [self buildShell];
+    [self showPage:self.currentPage];
+}
+
 -(void)buildShell
 {
     NSView* root = self.window.contentView;
@@ -196,9 +235,9 @@ static NSView* Card(NSView* contents)
     Fill(backdrop, root, 0);
 
     NSStackView* brand = Stack(@[LuLuIcon(38),
-        Stack(@[Label(@"LuLu", 20, NSFontWeightSemibold), Secondary(T(@"介面預覽", @"Interface preview"))], NSUserInterfaceLayoutOrientationVertical, 2)], NSUserInterfaceLayoutOrientationHorizontal, 12);
+        Stack(@[Label(@"LuLu", 20, NSFontWeightSemibold), Secondary(PreviewText(@"Interface preview"))], NSUserInterfaceLayoutOrientationVertical, 2)], NSUserInterfaceLayoutOrientationHorizontal, 12);
     NSStackView* navigation = Stack(@[brand], NSUserInterfaceLayoutOrientationVertical, 22);
-    NSArray* titles = @[T(@"總覽", @"Overview"), T(@"程式規則", @"App Rules"), T(@"連線提示", @"Connection Alert"), T(@"設定", @"Settings")];
+    NSArray* titles = @[PreviewText(@"Overview"), PreviewText(@"App Rules"), PreviewText(@"Connection Alert"), PreviewText(@"Settings")];
     NSArray* symbols = @[@"square.grid.2x2", @"line.3.horizontal.decrease.circle", @"bell", @"gearshape"];
     NSMutableArray* buttons = [NSMutableArray array];
     for(NSUInteger index = 0; index < titles.count; index++)
@@ -214,8 +253,8 @@ static NSView* Card(NSView* contents)
     self.navigation = buttons;
     NSView* gap = Spacer();
     [gap setContentHuggingPriority:1 forOrientation:NSLayoutConstraintOrientationVertical];
-    NSStackView* footer = Stack(@[Secondary(T(@"範例資料", @"Sample data")),
-        Secondary(T(@"未連接防護服務", @"Firewall service disconnected")), PreviewDivider(), Secondary(@"Objective-See · GPL-3.0")], NSUserInterfaceLayoutOrientationVertical, 12);
+    NSStackView* footer = Stack(@[Secondary(PreviewText(@"Sample data")),
+        Secondary(PreviewText(@"Firewall service disconnected")), PreviewDivider(), Secondary(@"Objective-See · GPL-3.0")], NSUserInterfaceLayoutOrientationVertical, 12);
     NSStackView* sidebarContent = Stack(@[navigation, gap, footer], NSUserInterfaceLayoutOrientationVertical, 20);
     [navigation.widthAnchor constraintEqualToAnchor:sidebarContent.widthAnchor].active = YES;
     [footer.widthAnchor constraintEqualToAnchor:sidebarContent.widthAnchor].active = YES;
@@ -224,13 +263,16 @@ static NSView* Card(NSView* contents)
     self.pageView = [[PreviewCanvas alloc] init];
     self.pageView.translatesAutoresizingMaskIntoConstraints = NO;
     [root addSubview:self.pageView];
+    CGFloat sidebarWidth = 204;
+    for(NSString* title in titles)
+        sidebarWidth = MAX(sidebarWidth, ceil([title sizeWithAttributes:@{NSFontAttributeName: [NSFont systemFontOfSize:13.5 weight:NSFontWeightMedium]}].width) + 84);
     [NSLayoutConstraint activateConstraints:@[
-        [sidebar.leadingAnchor constraintEqualToAnchor:root.leadingAnchor constant:12],
+        PreviewRightToLeft() ? [sidebar.rightAnchor constraintEqualToAnchor:root.rightAnchor constant:-12] : [sidebar.leftAnchor constraintEqualToAnchor:root.leftAnchor constant:12],
         [sidebar.topAnchor constraintEqualToAnchor:root.topAnchor constant:12],
         [sidebar.bottomAnchor constraintEqualToAnchor:root.bottomAnchor constant:-12],
-        [sidebar.widthAnchor constraintEqualToConstant:204],
-        [self.pageView.leadingAnchor constraintEqualToAnchor:sidebar.trailingAnchor constant:12],
-        [self.pageView.trailingAnchor constraintEqualToAnchor:root.trailingAnchor],
+        [sidebar.widthAnchor constraintEqualToConstant:sidebarWidth],
+        PreviewRightToLeft() ? [self.pageView.rightAnchor constraintEqualToAnchor:sidebar.leftAnchor constant:-12] : [self.pageView.leftAnchor constraintEqualToAnchor:sidebar.rightAnchor constant:12],
+        PreviewRightToLeft() ? [self.pageView.leftAnchor constraintEqualToAnchor:root.leftAnchor] : [self.pageView.rightAnchor constraintEqualToAnchor:root.rightAnchor],
         [self.pageView.topAnchor constraintEqualToAnchor:root.topAnchor],
         [self.pageView.bottomAnchor constraintEqualToAnchor:root.bottomAnchor]
     ]];
@@ -260,41 +302,44 @@ static NSView* Card(NSView* contents)
 
 -(void)showPage:(NSInteger)page
 {
+    if(self.currentPage == 1 && self.search) [self saveRuleViewState];
     self.currentPage = page;
     for(NSButton* button in self.navigation) button.state = button.tag == page ? NSControlStateValueOn : NSControlStateValueOff;
     if(page == 0) [self buildOverview];
     else if(page == 1) [self buildRules];
     else if(page == 2) [self buildConnections];
     else [self buildSettings];
+    ApplyDirection(self.window.contentView);
 }
 
 -(void)buildOverview
 {
-    NSStackView* page = [self pageWithTitle:T(@"總覽", @"Overview") subtitle:T(@"預設設定檔 · 範例資料", @"Default profile · Sample data")];
+    NSStackView* page = [self pageWithTitle:PreviewText(@"Overview") subtitle:PreviewText(@"Default profile · Sample data")];
     NSStackView* service = Stack(@[LuLuIcon(56),
-        Stack(@[Label(T(@"防護服務未連接", @"Firewall service disconnected"), 18, NSFontWeightSemibold),
-            Secondary(T(@"此預覽不會監控或攔截網絡連線。", @"This preview does not monitor or block network connections."))], NSUserInterfaceLayoutOrientationVertical, 6)], NSUserInterfaceLayoutOrientationHorizontal, 16);
+        Stack(@[Label(PreviewText(@"Firewall service disconnected"), 18, NSFontWeightSemibold),
+            Secondary(PreviewText(@"This preview does not monitor or block network connections."))], NSUserInterfaceLayoutOrientationVertical, 6)], NSUserInterfaceLayoutOrientationHorizontal, 16);
     AddWide(page, Card(service));
     NSUInteger allowed = [[self.model rulesMatching:@"" filter:1] count];
     NSUInteger blocked = [[self.model rulesMatching:@"" filter:2] count];
     NSUInteger disabled = [[self.model rulesMatching:@"" filter:3] count];
     NSStackView* rules = Stack(@[], NSUserInterfaceLayoutOrientationVertical, 12);
-    AddWide(rules, Stack(@[Label(T(@"程式規則", @"App Rules"), 15, NSFontWeightSemibold), Spacer(),
-        Button(T(@"管理規則", @"Manage Rules"), self, @selector(openRules:))], NSUserInterfaceLayoutOrientationHorizontal, 12));
-    AddWide(rules, Secondary([NSString stringWithFormat:T(@"%lu 項規則　·　%lu 允許　·　%lu 封鎖　·　%lu 已停用", @"%lu rules  ·  %lu allowed  ·  %lu blocked  ·  %lu disabled"), self.model.rules.count, allowed, blocked, disabled]));
+    AddWide(rules, Stack(@[Label(PreviewText(@"App Rules"), 15, NSFontWeightSemibold), Spacer(),
+        Button(PreviewText(@"Manage Rules"), self, @selector(openRules:))], NSUserInterfaceLayoutOrientationHorizontal, 12));
+    AddWide(rules, Secondary([NSString stringWithFormat:PreviewText(@"Rules: %@ · Allowed: %@ · Blocked: %@ · Disabled: %@"), PreviewNumber(self.model.rules.count), PreviewNumber(allowed), PreviewNumber(blocked), PreviewNumber(disabled)]));
     for(PreviewRule* rule in self.model.rules)
     {
         AddWide(rules, PreviewDivider());
-        NSTextField* action = Label(!rule.enabled ? T(@"已停用", @"Disabled") : (rule.allowed ? T(@"允許", @"Allow") : T(@"封鎖", @"Block")), 12, NSFontWeightMedium);
+        NSTextField* action = Label(!rule.enabled ? PreviewText(@"Disabled") : (rule.allowed ? PreviewText(@"Allow") : PreviewText(@"Block")), 12, NSFontWeightMedium);
         action.textColor = !rule.enabled ? NSColor.secondaryLabelColor : StatusColor(rule.allowed);
-        NSTextField* endpoint = Secondary([rule.endpoint isEqual:@"*"] ? T(@"所有目的地", @"All destinations") : rule.endpoint);
+        NSTextField* endpoint = Secondary([rule.endpoint isEqual:@"*"] ? PreviewText(@"All destinations") : rule.endpoint);
+        endpoint.identifier = [rule.endpoint isEqual:@"*"] ? nil : @"technical";
         endpoint.maximumNumberOfLines = 1;
         endpoint.lineBreakMode = NSLineBreakByTruncatingMiddle;
         AddWide(rules, Stack(@[AppIcon(rule.path, rule.symbol, 28), Label(rule.name, 13, NSFontWeightMedium), Spacer(), endpoint, action], NSUserInterfaceLayoutOrientationHorizontal, 14));
     }
     AddWide(page, Card(rules));
-    AddWide(page, Stack(@[Secondary(T(@"所有變更只在本次預覽保留。", @"Changes last for this preview session.")), Spacer(),
-        Button(T(@"檢視連線提示", @"View Connection Alert"), self, @selector(openConnections:))], NSUserInterfaceLayoutOrientationHorizontal, 12));
+    AddWide(page, Stack(@[Secondary(PreviewText(@"Changes last for this preview session.")), Spacer(),
+        Button(PreviewText(@"View Connection Alert"), self, @selector(openConnections:))], NSUserInterfaceLayoutOrientationHorizontal, 12));
 }
 
 -(void)openRules:(id)sender { [self showPage:1]; }
@@ -302,26 +347,28 @@ static NSView* Card(NSView* contents)
 
 -(void)buildRules
 {
-    NSStackView* page = [self pageWithTitle:T(@"程式規則", @"App Rules") subtitle:T(@"預設設定檔 · 範例資料", @"Default profile · Sample data")];
+    NSStackView* page = [self pageWithTitle:PreviewText(@"App Rules") subtitle:PreviewText(@"Default profile · Sample data")];
     self.search = [[NSSearchField alloc] init];
-    self.search.placeholderString = T(@"搜尋程式、路徑或目的地", @"Search apps, paths or destinations");
+    self.search.stringValue = self.ruleQuery ?: @"";
+    self.search.placeholderString = PreviewText(@"Search apps, paths or destinations");
     self.search.accessibilityLabel = self.search.placeholderString;
     self.search.delegate = self;
     self.search.translatesAutoresizingMaskIntoConstraints = NO;
     [self.search.widthAnchor constraintGreaterThanOrEqualToConstant:240].active = YES;
-    NSButton* add = Button(T(@"新增規則", @"Add Rule"), self, @selector(addRule:));
+    NSButton* add = Button(PreviewText(@"Add Rule"), self, @selector(addRule:));
     add.image = [NSImage imageWithSystemSymbolName:@"plus" accessibilityDescription:nil];
     add.imagePosition = NSImageLeading;
     NSStackView* tools = Stack(@[Stack(@[self.search, add], NSUserInterfaceLayoutOrientationHorizontal, 12)], NSUserInterfaceLayoutOrientationVertical, 12);
     [tools.arrangedSubviews.firstObject.widthAnchor constraintEqualToAnchor:tools.widthAnchor].active = YES;
-    self.filter = [NSSegmentedControl segmentedControlWithLabels:@[T(@"全部", @"All"), T(@"允許", @"Allowed"), T(@"封鎖", @"Blocked"), T(@"已停用", @"Disabled")]
+    self.filter = [NSSegmentedControl segmentedControlWithLabels:@[PreviewText(@"All"), PreviewText(@"Allowed"), PreviewText(@"Blocked"), PreviewText(@"Disabled")]
         trackingMode:NSSegmentSwitchTrackingSelectOne target:self action:@selector(filterChanged:)];
-    self.filter.selectedSegment = 0;
-    self.filter.accessibilityLabel = T(@"規則類別", @"Rule category");
+    self.filter.selectedSegment = self.ruleFilter;
+    self.filter.accessibilityLabel = PreviewText(@"Rule category");
     [tools addArrangedSubview:self.filter];
     AddWide(page, PreviewGlass(tools, 14, 18));
 
     self.table = [[NSTableView alloc] init];
+    self.table.userInterfaceLayoutDirection = PreviewRightToLeft() ? NSUserInterfaceLayoutDirectionRightToLeft : NSUserInterfaceLayoutDirectionLeftToRight;
     self.table.style = NSTableViewStyleInset;
     self.table.rowHeight = 54;
     self.table.intercellSpacing = NSMakeSize(12, 4);
@@ -332,13 +379,16 @@ static NSView* Card(NSView* contents)
     self.table.delegate = self;
     self.table.dataSource = self;
     self.table.allowsEmptySelection = YES;
-    self.table.accessibilityLabel = T(@"程式規則列表", @"App rules list");
+    self.table.accessibilityLabel = PreviewText(@"App rules list");
+    CGFloat actionWidth = 70;
+    for(NSString* key in @[@"Allow", @"Block", @"Disabled"])
+        actionWidth = MAX(actionWidth, ceil([PreviewText(key) sizeWithAttributes:@{NSFontAttributeName: [NSFont systemFontOfSize:12 weight:NSFontWeightMedium]}].width) + 24);
     for(NSString* identifier in @[@"app", @"action"])
     {
         NSTableColumn* column = [[NSTableColumn alloc] initWithIdentifier:identifier];
-        column.width = [identifier isEqual:@"app"] ? 380 : 70;
-        column.minWidth = [identifier isEqual:@"app"] ? 220 : 70;
-        if([identifier isEqual:@"action"]) column.maxWidth = 80;
+        column.width = [identifier isEqual:@"app"] ? 380 : actionWidth;
+        column.minWidth = [identifier isEqual:@"app"] ? 220 : actionWidth;
+        if([identifier isEqual:@"action"]) column.maxWidth = actionWidth;
         [self.table addTableColumn:column];
     }
     NSScrollView* listScroll = [[NSScrollView alloc] init];
@@ -352,7 +402,7 @@ static NSView* Card(NSView* contents)
     self.inspector = Stack(@[], NSUserInterfaceLayoutOrientationVertical, 12);
     NSView* inspectorCard = self.inspector;
     [inspectorCard.widthAnchor constraintEqualToConstant:216].active = YES;
-    NSStackView* list = Stack(@[Stack(@[Secondary(T(@"程式 / 目的地", @"APP / DESTINATION")), Spacer(), Secondary(T(@"動作", @"ACTION"))], NSUserInterfaceLayoutOrientationHorizontal, 12), PreviewDivider(), listScroll], NSUserInterfaceLayoutOrientationVertical, 10);
+    NSStackView* list = Stack(@[Stack(@[Secondary(PreviewText(@"APP / DESTINATION")), Spacer(), Secondary(PreviewText(@"ACTION"))], NSUserInterfaceLayoutOrientationHorizontal, 12), PreviewDivider(), listScroll], NSUserInterfaceLayoutOrientationVertical, 10);
     for(NSView* view in list.arrangedSubviews) [view.widthAnchor constraintEqualToAnchor:list.widthAnchor].active = YES;
     NSBox* separator = [[NSBox alloc] init];
     separator.boxType = NSBoxSeparator;
@@ -362,7 +412,7 @@ static NSView* Card(NSView* contents)
     [separator.heightAnchor constraintEqualToAnchor:columns.heightAnchor].active = YES;
     columns.alignment = NSLayoutAttributeTop;
     AddWide(page, columns);
-    self.emptyLabel = Secondary(T(@"沒有符合條件的規則。試試其他關鍵字或類別。", @"No matching rules. Try another search or category."));
+    self.emptyLabel = Secondary(PreviewText(@"No matching rules. Try another search or category."));
     AddWide(page, self.emptyLabel);
     self.countLabel = Secondary(@"");
     AddWide(page, self.countLabel);
@@ -372,15 +422,16 @@ static NSView* Card(NSView* contents)
 
 -(void)refreshRules
 {
-    PreviewRule* previous = [self selectedRule];
+    PreviewRule* previous = [self selectedRule] ?: self.ruleSelection;
     self.visibleRules = [self.model rulesMatching:self.search.stringValue filter:self.filter.selectedSegment];
     [self.table reloadData];
     NSUInteger selection = [self.visibleRules indexOfObjectIdenticalTo:previous];
     if(selection == NSNotFound && self.visibleRules.count > 0) selection = 0;
     if(selection != NSNotFound) [self.table selectRowIndexes:[NSIndexSet indexSetWithIndex:selection] byExtendingSelection:NO];
     self.emptyLabel.hidden = self.visibleRules.count != 0;
-    self.countLabel.stringValue = [NSString stringWithFormat:T(@"%lu 項規則 · 範例資料", @"%lu rules · Sample data"), self.visibleRules.count];
+    self.countLabel.stringValue = [NSString stringWithFormat:PreviewText(@"Rules: %@ · Sample data"), PreviewNumber(self.visibleRules.count)];
     [self updateInspector];
+    [self saveRuleViewState];
 }
 
 -(PreviewRule*)selectedRule
@@ -399,28 +450,31 @@ static NSView* Card(NSView* contents)
     {
         NSTextField* name = Label(rule.name, 13, NSFontWeightSemibold);
         if(!rule.enabled) name.textColor = NSColor.secondaryLabelColor;
-        NSString* endpoint = [rule.endpoint isEqual:@"*"] ? T(@"所有目的地", @"All destinations") : rule.endpoint;
+        NSString* endpoint = [rule.endpoint isEqual:@"*"] ? PreviewText(@"All destinations") : rule.endpoint;
         NSTextField* detail = Secondary(endpoint);
+        detail.identifier = [rule.endpoint isEqual:@"*"] ? nil : @"technical";
         detail.maximumNumberOfLines = 1;
         detail.lineBreakMode = NSLineBreakByTruncatingMiddle;
         NSStackView* rowView = Stack(@[AppIcon(rule.path, rule.symbol, 32), Stack(@[name, detail], NSUserInterfaceLayoutOrientationVertical, 4)], NSUserInterfaceLayoutOrientationHorizontal, 12);
         Fill(rowView, cell, 7);
         cell.textField = name;
+        cell.statusColor = name.textColor;
         cell.toolTip = rule.path;
     }
     else
     {
-        NSTextField* status = Label(!rule.enabled ? T(@"已停用", @"Disabled") : (rule.allowed ? T(@"允許", @"Allow") : T(@"封鎖", @"Block")), 12, NSFontWeightMedium);
+        NSTextField* status = Label(!rule.enabled ? PreviewText(@"Disabled") : (rule.allowed ? PreviewText(@"Allow") : PreviewText(@"Block")), 12, NSFontWeightMedium);
         status.textColor = !rule.enabled ? NSColor.secondaryLabelColor : StatusColor(rule.allowed);
         cell.statusColor = status.textColor;
         [cell addSubview:status];
         [NSLayoutConstraint activateConstraints:@[
-            [status.leadingAnchor constraintEqualToAnchor:cell.leadingAnchor constant:8],
-            [status.trailingAnchor constraintEqualToAnchor:cell.trailingAnchor constant:-8],
+            [status.leftAnchor constraintEqualToAnchor:cell.leftAnchor constant:8],
+            [status.rightAnchor constraintEqualToAnchor:cell.rightAnchor constant:-8],
             [status.centerYAnchor constraintEqualToAnchor:cell.centerYAnchor]
         ]];
         cell.textField = status;
     }
+    ApplyDirection(cell);
     return cell;
 }
 
@@ -433,27 +487,30 @@ static NSView* Card(NSView* contents)
 {
     for(NSView* view in self.inspector.arrangedSubviews.copy) { [self.inspector removeArrangedSubview:view]; [view removeFromSuperview]; }
     PreviewRule* rule = [self selectedRule];
-    if(!rule) { [self.inspector addArrangedSubview:Secondary(T(@"選取規則以查看詳情", @"Select a rule to see details"))]; return; }
+    if(!rule) { [self.inspector addArrangedSubview:Secondary(PreviewText(@"Select a rule to see details"))]; return; }
     [self.inspector addArrangedSubview:AppIcon(rule.path, rule.symbol, 48)];
     AddWide(self.inspector, Label(rule.name, 18, NSFontWeightSemibold));
-    [self.inspector addArrangedSubview:PreviewBadge(!rule.enabled ? T(@"已停用", @"Disabled") : (rule.allowed ? T(@"允許", @"Allow") : T(@"封鎖", @"Block")), !rule.enabled ? NSColor.secondaryLabelColor : StatusColor(rule.allowed))];
+    [self.inspector addArrangedSubview:PreviewBadge(!rule.enabled ? PreviewText(@"Disabled") : (rule.allowed ? PreviewText(@"Allow") : PreviewText(@"Block")), !rule.enabled ? NSColor.secondaryLabelColor : StatusColor(rule.allowed))];
     AddWide(self.inspector, PreviewDivider());
-    [self.inspector addArrangedSubview:Secondary(T(@"程式路徑", @"APP PATH"))];
+    [self.inspector addArrangedSubview:Secondary(PreviewText(@"APP PATH"))];
     NSTextField* path = Label(rule.path, 11, NSFontWeightRegular); path.selectable = YES;
+    path.identifier = @"technical";
     AddWide(self.inspector, path);
-    [self.inspector addArrangedSubview:Secondary(T(@"目的地", @"DESTINATION"))];
-    NSTextField* endpoint = Label([rule.endpoint isEqual:@"*"] ? T(@"所有目的地", @"All destinations") : rule.endpoint, 12, NSFontWeightMedium); endpoint.selectable = YES;
+    [self.inspector addArrangedSubview:Secondary(PreviewText(@"DESTINATION"))];
+    NSTextField* endpoint = Label([rule.endpoint isEqual:@"*"] ? PreviewText(@"All destinations") : rule.endpoint, 12, NSFontWeightMedium); endpoint.selectable = YES;
+    endpoint.identifier = [rule.endpoint isEqual:@"*"] ? nil : @"technical";
     AddWide(self.inspector, endpoint);
     NSPopUpButton* action = [[NSPopUpButton alloc] init];
-    [action addItemsWithTitles:@[T(@"允許連線", @"Allow connection"), T(@"封鎖連線", @"Block connection")]];
+    [action addItemsWithTitles:@[PreviewText(@"Allow connection"), PreviewText(@"Block connection")]];
     [action selectItemAtIndex:rule.allowed ? 0 : 1];
     action.target = self; action.action = @selector(changeAction:);
-    action.accessibilityLabel = T(@"連線動作", @"Connection action");
+    action.accessibilityLabel = PreviewText(@"Connection action");
     AddWide(self.inspector, action);
-    NSButton* enabled = [NSButton checkboxWithTitle:T(@"啟用此規則", @"Enable this rule") target:self action:@selector(changeEnabled:)];
+    NSButton* enabled = [NSButton checkboxWithTitle:PreviewText(@"Enable this rule") target:self action:@selector(changeEnabled:)];
     enabled.state = rule.enabled ? NSControlStateValueOn : NSControlStateValueOff;
     [self.inspector addArrangedSubview:enabled];
-    [self.inspector addArrangedSubview:Button(T(@"刪除規則", @"Delete Rule"), self, @selector(deleteRule:))];
+    [self.inspector addArrangedSubview:Button(PreviewText(@"Delete Rule"), self, @selector(deleteRule:))];
+    ApplyDirection(self.inspector);
 }
 
 -(void)changeAction:(NSPopUpButton*)sender
@@ -485,12 +542,12 @@ static NSView* Card(NSView* contents)
 {
     self.sheet = [[NSPanel alloc] initWithContentRect:NSMakeRect(0, 0, 540, 480) styleMask:NSWindowStyleMaskTitled backing:NSBackingStoreBuffered defer:NO];
     self.sheet.title = @"LuLu Interface Preview";
-    NSStackView* stack = Stack(@[Secondary(T(@"預覽模式 · 範例資料", @"Preview mode · Sample data")), Label(title, 23, NSFontWeightBold)], NSUserInterfaceLayoutOrientationVertical, 18);
+    NSStackView* stack = Stack(@[Secondary(PreviewText(@"Preview mode · Sample data")), Label(title, 23, NSFontWeightBold)], NSUserInterfaceLayoutOrientationVertical, 18);
     self.sheetStack = stack;
     [self.sheet.contentView addSubview:stack];
     [NSLayoutConstraint activateConstraints:@[
-        [stack.leadingAnchor constraintEqualToAnchor:self.sheet.contentView.leadingAnchor constant:28],
-        [stack.trailingAnchor constraintEqualToAnchor:self.sheet.contentView.trailingAnchor constant:-28],
+        [stack.leftAnchor constraintEqualToAnchor:self.sheet.contentView.leftAnchor constant:28],
+        [stack.rightAnchor constraintEqualToAnchor:self.sheet.contentView.rightAnchor constant:-28],
         [stack.topAnchor constraintEqualToAnchor:self.sheet.contentView.topAnchor constant:28]
     ]];
     return stack;
@@ -506,6 +563,7 @@ static NSView* Card(NSView* contents)
 {
     NSTextField* input = [NSTextField textFieldWithString:value];
     input.accessibilityLabel = label;
+    if([value hasPrefix:@"/"] || [value isEqual:@"*"]) input.identifier = @"technical";
     AddWide(stack, Stack(@[Secondary(label), input], NSUserInterfaceLayoutOrientationVertical, 6));
     [input.widthAnchor constraintEqualToAnchor:stack.widthAnchor].active = YES;
     return input;
@@ -513,20 +571,21 @@ static NSView* Card(NSView* contents)
 
 -(void)addRule:(id)sender
 {
-    NSStackView* stack = [self beginSheetWithTitle:T(@"新增規則", @"Add Rule")];
-    self.nameInput = [self inputWithValue:@"" label:T(@"程式名稱", @"App name") stack:stack];
-    self.pathInput = [self inputWithValue:@"/Applications/" label:T(@"完整程式路徑", @"Full app path") stack:stack];
-    self.endpointInput = [self inputWithValue:@"*" label:T(@"目的地（* 代表全部）", @"Destination (* for all)") stack:stack];
+    NSStackView* stack = [self beginSheetWithTitle:PreviewText(@"Add Rule")];
+    self.nameInput = [self inputWithValue:@"" label:PreviewText(@"App name") stack:stack];
+    self.pathInput = [self inputWithValue:@"/Applications/" label:PreviewText(@"Full app path") stack:stack];
+    self.endpointInput = [self inputWithValue:@"*" label:PreviewText(@"Destination (* for all)") stack:stack];
     self.actionInput = [[NSPopUpButton alloc] init];
-    [self.actionInput addItemsWithTitles:@[T(@"允許連線", @"Allow connection"), T(@"封鎖連線", @"Block connection")]];
-    self.actionInput.accessibilityLabel = T(@"連線動作", @"Connection action");
+    [self.actionInput addItemsWithTitles:@[PreviewText(@"Allow connection"), PreviewText(@"Block connection")]];
+    self.actionInput.accessibilityLabel = PreviewText(@"Connection action");
     AddWide(stack, self.actionInput);
     self.formError = Secondary(@""); self.formError.textColor = NSColor.systemRedColor;
     AddWide(stack, self.formError);
-    NSButton* cancel = Button(T(@"取消", @"Cancel"), self, @selector(cancelSheet:)); cancel.keyEquivalent = @"\e";
-    NSButton* save = Button(T(@"新增", @"Add"), self, @selector(saveRule:)); save.keyEquivalent = @"\r";
+    NSButton* cancel = Button(PreviewText(@"Cancel"), self, @selector(cancelSheet:)); cancel.keyEquivalent = @"\e";
+    NSButton* save = Button(PreviewText(@"Add"), self, @selector(saveRule:)); save.keyEquivalent = @"\r";
     AddWide(stack, Stack(@[Spacer(), cancel, save], NSUserInterfaceLayoutOrientationHorizontal, 8));
     [self resizeSheet];
+    ApplyDirection(self.sheet.contentView);
     [self.window beginSheet:self.sheet completionHandler:nil];
     [self.sheet makeFirstResponder:self.nameInput];
 }
@@ -540,7 +599,7 @@ static NSView* Card(NSView* contents)
     NSString* endpoint = [self.endpointInput.stringValue stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
     if(name.length == 0 || ![path hasPrefix:@"/"] || [path hasSuffix:@"/"] || endpoint.length == 0)
     {
-        self.formError.stringValue = T(@"請填寫名稱、完整程式路徑及目的地。", @"Enter a name, a full app path and a destination.");
+        self.formError.stringValue = PreviewText(@"Enter a name, a full app path and a destination.");
         [self resizeSheet];
         NSAccessibilityPostNotification(self.formError, NSAccessibilityValueChangedNotification);
         return;
@@ -558,51 +617,55 @@ static NSView* Card(NSView* contents)
 
 -(void)buildConnections
 {
-    NSStackView* page = [self pageWithTitle:T(@"連線提示", @"Connection Alert") subtitle:T(@"範例連線要求", @"Sample connection request")];
+    NSStackView* page = [self pageWithTitle:PreviewText(@"Connection Alert") subtitle:PreviewText(@"Sample connection request")];
     NSStackView* content = Stack(@[AppIcon(@"", @"curlybraces", 48),
         Label(@"Sample Editor", 19, NSFontWeightSemibold),
-        Secondary(T(@"Sample Editor 想連線至 updates.example.com。", @"Sample Editor wants to connect to updates.example.com.")),
-        Button(T(@"開啟範例提示", @"Open Sample Alert"), self, @selector(showConnection:))], NSUserInterfaceLayoutOrientationVertical, 16);
+        Secondary(PreviewText(@"Sample Editor wants to connect to updates.example.com.")),
+        Button(PreviewText(@"Open Sample Alert"), self, @selector(showConnection:))], NSUserInterfaceLayoutOrientationVertical, 16);
     AddWide(page, PreviewSurface(content, 24));
-    self.noticeLabel = Secondary(self.lastDecision ?: T(@"尚未作出決定", @"No decision yet"));
+    self.noticeLabel = Secondary([self decisionSummary]);
     AddWide(page, self.noticeLabel);
 }
 
 -(void)showConnection:(id)sender
 {
-    NSStackView* stack = [self beginSheetWithTitle:T(@"允許這個連線？", @"Allow this connection?")];
+    NSStackView* stack = [self beginSheetWithTitle:PreviewText(@"Allow this connection?")];
     [stack addArrangedSubview:Stack(@[AppIcon(@"", @"curlybraces", 40),
-        Stack(@[Label(@"Sample Editor", 17, NSFontWeightSemibold), Secondary(T(@"正在要求對外連線", @"Requests an outgoing connection"))], NSUserInterfaceLayoutOrientationVertical, 4)], NSUserInterfaceLayoutOrientationHorizontal, 12)];
-    NSStackView* destination = Stack(@[Secondary(T(@"目的地", @"DESTINATION")), Label(@"updates.example.com", 18, NSFontWeightMedium), Secondary(@"TCP · 443 · HTTPS")], NSUserInterfaceLayoutOrientationVertical, 5);
+        Stack(@[Label(@"Sample Editor", 17, NSFontWeightSemibold), Secondary(PreviewText(@"Requests an outgoing connection"))], NSUserInterfaceLayoutOrientationVertical, 4)], NSUserInterfaceLayoutOrientationHorizontal, 12)];
+    NSTextField* hostname = Label(@"updates.example.com", 18, NSFontWeightMedium);
+    hostname.identifier = @"technical";
+    NSStackView* destination = Stack(@[Secondary(PreviewText(@"DESTINATION")), hostname, Technical(@"TCP · 443 · HTTPS")], NSUserInterfaceLayoutOrientationVertical, 5);
     AddWide(stack, Card(destination));
     self.scopeInput = [[NSPopUpButton alloc] init];
-    [self.scopeInput addItemsWithTitles:@[T(@"僅此目的地", @"This destination"), T(@"此程式的所有連線", @"All connections from this app"), T(@"此程式與子程序", @"This app and child processes")]];
-    self.scopeInput.accessibilityLabel = T(@"規則範圍", @"Rule scope");
+    [self.scopeInput addItemsWithTitles:@[PreviewText(@"This destination"), PreviewText(@"All connections from this app"), PreviewText(@"This app and child processes")]];
+    self.scopeInput.accessibilityLabel = PreviewText(@"Rule scope");
     self.durationInput = [[NSPopUpButton alloc] init];
-    [self.durationInput addItemsWithTitles:@[T(@"僅此一次", @"Just once"), T(@"程式結束前", @"Until the app quits"), T(@"永久", @"Always"), T(@"自訂時間", @"Custom duration")]];
+    [self.durationInput addItemsWithTitles:@[PreviewText(@"Just once"), PreviewText(@"Until the app quits"), PreviewText(@"Always"), PreviewText(@"Custom duration")]];
     self.durationInput.target = self; self.durationInput.action = @selector(durationChanged:);
-    self.durationInput.accessibilityLabel = T(@"有效時間", @"Duration");
-    NSStackView* scopeRow = Stack(@[Secondary(T(@"套用範圍", @"Applies to")), Spacer(), self.scopeInput], NSUserInterfaceLayoutOrientationHorizontal, 10);
-    NSStackView* durationRow = Stack(@[Secondary(T(@"有效時間", @"Duration")), Spacer(), self.durationInput], NSUserInterfaceLayoutOrientationHorizontal, 10);
+    self.durationInput.accessibilityLabel = PreviewText(@"Duration");
+    NSStackView* scopeRow = Stack(@[Secondary(PreviewText(@"Applies to")), Spacer(), self.scopeInput], NSUserInterfaceLayoutOrientationHorizontal, 10);
+    NSStackView* durationRow = Stack(@[Secondary(PreviewText(@"Duration")), Spacer(), self.durationInput], NSUserInterfaceLayoutOrientationHorizontal, 10);
     AddWide(stack, scopeRow); AddWide(stack, durationRow);
     self.minutesInput = [NSTextField textFieldWithString:@"15"];
-    self.minutesInput.placeholderString = T(@"分鐘（1–1440）", @"Minutes (1–1440)");
+    self.minutesInput.identifier = @"technical";
+    self.minutesInput.placeholderString = PreviewText(@"Minutes (1–1440)");
     self.minutesInput.accessibilityLabel = self.minutesInput.placeholderString;
     self.minutesInput.hidden = YES;
     AddWide(stack, self.minutesInput);
-    NSButton* details = [NSButton checkboxWithTitle:T(@"顯示程式詳情", @"Show app details") target:self action:@selector(toggleConnectionDetails:)];
+    NSButton* details = [NSButton checkboxWithTitle:PreviewText(@"Show app details") target:self action:@selector(toggleConnectionDetails:)];
     [stack addArrangedSubview:details];
-    self.connectionDetails = Stack(@[Secondary(@"/Applications/Sample Editor.app"), Secondary(T(@"簽署狀態：未驗證", @"Signature: Not verified"))], NSUserInterfaceLayoutOrientationVertical, 5);
+    self.connectionDetails = Stack(@[Technical(@"/Applications/Sample Editor.app"), Secondary(PreviewText(@"Signature: Not verified"))], NSUserInterfaceLayoutOrientationVertical, 5);
     self.connectionDetails.hidden = YES;
     AddWide(stack, self.connectionDetails);
     self.formError = Secondary(@""); self.formError.textColor = NSColor.systemRedColor;
     AddWide(stack, self.formError);
-    NSButton* cancel = Button(T(@"取消", @"Cancel"), self, @selector(cancelSheet:)); cancel.keyEquivalent = @"\e";
-    NSButton* block = Button(T(@"封鎖連線", @"Block Connection"), self, @selector(respondToConnection:)); block.tag = 0;
-    NSButton* allow = Button(T(@"允許連線", @"Allow Connection"), self, @selector(respondToConnection:)); allow.tag = 1;
+    NSButton* cancel = Button(PreviewText(@"Cancel"), self, @selector(cancelSheet:)); cancel.keyEquivalent = @"\e";
+    NSButton* block = Button(PreviewText(@"Block Connection"), self, @selector(respondToConnection:)); block.tag = 0;
+    NSButton* allow = Button(PreviewText(@"Allow Connection"), self, @selector(respondToConnection:)); allow.tag = 1;
     AddWide(stack, Stack(@[cancel, Spacer(), block, allow], NSUserInterfaceLayoutOrientationHorizontal, 8));
     [self.sheet setContentSize:NSMakeSize(560, 610)];
     [self resizeSheet];
+    ApplyDirection(self.sheet.contentView);
     [self.window beginSheet:self.sheet completionHandler:nil];
 }
 -(void)durationChanged:(id)sender { self.minutesInput.hidden = self.durationInput.indexOfSelectedItem != 3; [self resizeSheet]; }
@@ -615,17 +678,27 @@ static NSView* Card(NSView* contents)
         NSInteger minutes = 0;
         if(![scanner scanInteger:&minutes] || !scanner.isAtEnd || minutes < 1 || minutes > 1440)
         {
-            self.formError.stringValue = T(@"請輸入 1 至 1440 的整數分鐘。", @"Enter a whole number from 1 to 1440 minutes.");
+            self.formError.stringValue = PreviewText(@"Enter a whole number from 1 to 1440 minutes.");
             [self resizeSheet];
             return;
         }
     }
-    NSString* duration = self.durationInput.titleOfSelectedItem;
-    if(self.durationInput.indexOfSelectedItem == 3) duration = [NSString stringWithFormat:T(@"%@ 分鐘", @"%@ minutes"), self.minutesInput.stringValue];
-    self.lastDecision = [NSString stringWithFormat:T(@"範例決定：%@ · %@ · %@", @"Sample decision: %@ · %@ · %@"),
-        sender.tag == 1 ? T(@"允許", @"Allow") : T(@"封鎖", @"Block"), self.scopeInput.titleOfSelectedItem, duration];
-    self.noticeLabel.stringValue = self.lastDecision;
+    self.lastDecision = @{@"allowed": @(sender.tag == 1), @"scope": @(self.scopeInput.indexOfSelectedItem),
+        @"duration": @(self.durationInput.indexOfSelectedItem), @"minutes": @(self.minutesInput.integerValue)};
+    self.noticeLabel.stringValue = [self decisionSummary];
     [self cancelSheet:nil];
+}
+
+-(NSString*)decisionSummary
+{
+    if(!self.lastDecision) return PreviewText(@"No decision yet");
+    NSArray* scopes = @[@"This destination", @"All connections from this app", @"This app and child processes"];
+    NSArray* durations = @[@"Just once", @"Until the app quits", @"Always"];
+    NSUInteger durationIndex = [self.lastDecision[@"duration"] unsignedIntegerValue];
+    NSString* duration = durationIndex == 3 ? [NSString stringWithFormat:PreviewText(@"%@ min"), PreviewNumber([self.lastDecision[@"minutes"] unsignedIntegerValue])] : PreviewText(durations[durationIndex]);
+    return [NSString stringWithFormat:PreviewText(@"Sample decision: %1$@ · %2$@ · %3$@"),
+        PreviewText([self.lastDecision[@"allowed"] boolValue] ? @"Allow" : @"Block"),
+        PreviewText(scopes[[self.lastDecision[@"scope"] unsignedIntegerValue]]), duration];
 }
 
 -(NSView*)settingGroup:(NSString*)title items:(NSArray<NSArray<NSString*>*>*)items
@@ -649,23 +722,36 @@ static NSView* Card(NSView* contents)
 
 -(void)buildSettings
 {
-    NSStackView* page = [self pageWithTitle:T(@"設定", @"Settings") subtitle:T(@"預設設定檔 · 範例偏好設定", @"Default profile · Sample preferences")];
-    AddWide(page, [self settingGroup:T(@"自動允許", @"Automatically allow") items:@[
-        @[@"apple", T(@"Apple 程式", @"Apple apps"), T(@"Apple 簽署的程式連線。", @"Connections from apps signed by Apple.")],
-        @[@"installed", T(@"已安裝的程式", @"Previously installed apps"), T(@"安裝 LuLu 前已存在的程式。", @"Apps present before LuLu was installed.")],
-        @[@"dns", @"DNS", T(@"網域名稱解析的連線。", @"Connections used to resolve domain names.")],
-        @[@"localhost", T(@"本機連線", @"Localhost connections"), T(@"此 Mac 上程式之間的連線。", @"Connections between apps on this Mac.")],
-        @[@"simulator", T(@"iOS 模擬器", @"iOS Simulator"), T(@"在模擬器中執行的程式。", @"Apps running inside the simulator.")]
+    NSStackView* page = [self pageWithTitle:PreviewText(@"Settings") subtitle:PreviewText(@"Default profile · Sample preferences")];
+    NSPopUpButton* language = [[NSPopUpButton alloc] init];
+    for(NSString* code in [@[@"system"] arrayByAddingObjectsFromArray:PreviewLanguageCodes()])
+    {
+        [language addItemWithTitle:PreviewLanguageName(code)];
+        language.lastItem.representedObject = code;
+        if([code isEqual:PreviewLanguageSelection()]) [language selectItem:language.lastItem];
+    }
+    language.target = self; language.action = @selector(changeLanguage:);
+    language.accessibilityLabel = PreviewText(@"Language");
+    NSStackView* languageCopy = Stack(@[Label(PreviewText(@"Language"), 14, NSFontWeightMedium),
+        Secondary(PreviewText(@"Language changes apply to this preview session."))], NSUserInterfaceLayoutOrientationVertical, 4);
+    AddWide(page, Card(Stack(@[languageCopy, Spacer(), language], NSUserInterfaceLayoutOrientationHorizontal, 20)));
+    AddWide(page, [self settingGroup:PreviewText(@"Automatically allow") items:@[
+        @[@"apple", PreviewText(@"Apple apps"), PreviewText(@"Connections from apps signed by Apple.")],
+        @[@"installed", PreviewText(@"Previously installed apps"), PreviewText(@"Apps present before LuLu was installed.")],
+        @[@"dns", @"DNS", PreviewText(@"Connections used to resolve domain names.")],
+        @[@"localhost", PreviewText(@"Localhost connections"), PreviewText(@"Connections between apps on this Mac.")],
+        @[@"simulator", PreviewText(@"iOS Simulator"), PreviewText(@"Apps running inside the simulator.")]
     ]]);
-    AddWide(page, [self settingGroup:T(@"運作模式", @"Operating mode") items:@[
-        @[@"passive", T(@"被動模式", @"Passive mode"), T(@"未知連線依預設動作處理，不顯示提示。", @"Handle unknown connections without showing alerts.")],
-        @[@"block", T(@"全部封鎖", @"Block mode"), T(@"封鎖新對外連線；既有連線不受影響。", @"Block new outgoing connections; existing connections are unaffected.")]
+    AddWide(page, [self settingGroup:PreviewText(@"Operating mode") items:@[
+        @[@"passive", PreviewText(@"Passive mode"), PreviewText(@"Handle unknown connections without showing alerts.")],
+        @[@"block", PreviewText(@"Block mode"), PreviewText(@"Block new outgoing connections; existing connections are unaffected.")]
     ]]);
-    AddWide(page, [self settingGroup:T(@"一般", @"General") items:@[
-        @[@"menubar", T(@"選單列圖示", @"Menu bar icon"), T(@"在選單列顯示 LuLu。", @"Show LuLu in the menu bar.")],
-        @[@"virustotal", T(@"VirusTotal 查詢", @"VirusTotal lookup"), T(@"在連線提示中提供手動查詢。", @"Offer a manual lookup from connection alerts.")],
-        @[@"updates", T(@"自動檢查更新", @"Check for updates"), T(@"取得可用版本的通知。", @"Get notified when an update is available.")]
+    AddWide(page, [self settingGroup:PreviewText(@"General") items:@[
+        @[@"menubar", PreviewText(@"Menu bar icon"), PreviewText(@"Show LuLu in the menu bar.")],
+        @[@"virustotal", PreviewText(@"VirusTotal lookup"), PreviewText(@"Offer a manual lookup from connection alerts.")],
+        @[@"updates", PreviewText(@"Check for updates"), PreviewText(@"Get notified when an update is available.")]
     ]]);
 }
+-(void)changeLanguage:(NSPopUpButton*)sender { PreviewSetLanguage(sender.selectedItem.representedObject); }
 -(void)toggleSetting:(NSSwitch*)sender { self.model.settings[sender.identifier] = @(sender.state == NSControlStateValueOn); }
 @end

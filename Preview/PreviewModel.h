@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 #import <Cocoa/Cocoa.h>
-
-NSString* PreviewText(NSString* traditionalChinese, NSString* english);
+#import "PreviewLocalization.h"
 
 @interface PreviewRule : NSObject <NSCopying>
 @property(nonatomic, copy) NSString* name;

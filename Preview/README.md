@@ -3,10 +3,13 @@
 An independent, native AppKit / Objective-C design prototype for LuLu. Runs on macOS 11 or later; building requires Apple's command-line developer tools with the macOS 26 SDK or later. The production app retains its macOS 10.15 deployment target.
 
 ```sh
-./script/build_and_run.sh           # Traditional Chinese
+./script/build_and_run.sh           # Follow the system language
+./script/build_and_run.sh --language zh-Hant # Traditional Chinese
+./script/build_and_run.sh --language ur      # Urdu (right-to-left)
 ./script/build_and_run.sh --english # English
 ./script/build_and_run.sh --english --light # English, light appearance
 ./script/test_preview.sh
+./script/test_preview_localization.sh
 ```
 
 The bundle is created at `outputs/LuLu Interface Preview.app`, with identifier `org.local.lulu.interface-preview`. The Codex Run action starts this preview.
@@ -20,6 +23,14 @@ The bundle is created at `outputs/LuLu Interface Preview.app`, with identifier `
 - Connection alert: app, destination, scope, duration, expandable details and a visible sample decision. Custom duration accepts 1–1440 whole minutes.
 - Settings: grouped, labelled native switches. State remains in memory while the preview is open.
 - Command-1 through Command-4 navigate between pages. All form fields and switches have accessibility labels. System controls, semantic text colors and Auto Layout support light and dark appearances.
+
+## Languages
+
+The preview supports the same 13 languages as LuLu: English, Traditional Chinese, Simplified Chinese, German, Spanish, French, Italian, Korean, Polish, Brazilian Portuguese, Turkish, Ukrainian and Urdu.
+
+The default follows the system language, including regional matching (for example, `zh-HK` selects Traditional Chinese). Choose a language in Settings or the Language menu to switch immediately. Language selection lasts for the preview session. Rules, preferences, undo history, rule search/filter/selection and the last sample decision remain available after switching. Finish or cancel an open form before changing language.
+
+Urdu mirrors the navigation, content and menus. Paths, hosts and protocols retain left-to-right writing. Labels, errors, menu titles and accessibility labels use `Resources/<language>.lproj/Localizable.strings`; missing translations fall back to their English source text. Keep keys and format arguments aligned across catalogs. The localization test checks bundled resource loading, catalog coverage, format arguments, regional matching, number formatting and direction.
 
 ## Scope
 

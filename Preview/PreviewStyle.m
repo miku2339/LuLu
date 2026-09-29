@@ -22,8 +22,8 @@ static void PreviewPinContent(NSView* content, NSView* container, CGFloat paddin
     content.translatesAutoresizingMaskIntoConstraints = NO;
     [container addSubview:content];
     [NSLayoutConstraint activateConstraints:@[
-        [content.leadingAnchor constraintEqualToAnchor:container.leadingAnchor constant:padding],
-        [content.trailingAnchor constraintEqualToAnchor:container.trailingAnchor constant:-padding],
+        [content.leftAnchor constraintEqualToAnchor:container.leftAnchor constant:padding],
+        [content.rightAnchor constraintEqualToAnchor:container.rightAnchor constant:-padding],
         [content.topAnchor constraintEqualToAnchor:container.topAnchor constant:padding],
         [content.bottomAnchor constraintEqualToAnchor:container.bottomAnchor constant:-padding]
     ]];
@@ -101,8 +101,8 @@ NSView* PreviewGlass(NSView* content, CGFloat padding, CGFloat cornerRadius)
         material.layer.masksToBounds = YES;
         [material addSubview:contentHost];
         [NSLayoutConstraint activateConstraints:@[
-            [contentHost.leadingAnchor constraintEqualToAnchor:material.leadingAnchor],
-            [contentHost.trailingAnchor constraintEqualToAnchor:material.trailingAnchor],
+            [contentHost.leftAnchor constraintEqualToAnchor:material.leftAnchor],
+            [contentHost.rightAnchor constraintEqualToAnchor:material.rightAnchor],
             [contentHost.topAnchor constraintEqualToAnchor:material.topAnchor],
             [contentHost.bottomAnchor constraintEqualToAnchor:material.bottomAnchor]
         ]];

@@ -1,11 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 #import "PreviewModel.h"
 
-NSString* PreviewText(NSString* traditionalChinese, NSString* english)
-{
-    return [NSProcessInfo.processInfo.arguments containsObject:@"--english"] ? english : traditionalChinese;
-}
-
 @implementation PreviewRule
 -(id)copyWithZone:(NSZone*)zone
 {
@@ -65,7 +60,7 @@ NSString* PreviewText(NSString* traditionalChinese, NSString* english)
     BOOL previous = rule.allowed;
     [self.undoManager registerUndoWithTarget:self handler:^(PreviewModel* target) { [target setAllowed:previous forRule:rule]; }];
     rule.allowed = allowed;
-    [self.undoManager setActionName:PreviewText(@"變更規則", @"Change Rule")];
+    [self.undoManager setActionName:PreviewText(@"Change Rule")];
 }
 
 -(void)setEnabled:(BOOL)enabled forRule:(PreviewRule*)rule
@@ -73,7 +68,7 @@ NSString* PreviewText(NSString* traditionalChinese, NSString* english)
     BOOL previous = rule.enabled;
     [self.undoManager registerUndoWithTarget:self handler:^(PreviewModel* target) { [target setEnabled:previous forRule:rule]; }];
     rule.enabled = enabled;
-    [self.undoManager setActionName:PreviewText(@"切換規則", @"Toggle Rule")];
+    [self.undoManager setActionName:PreviewText(@"Toggle Rule")];
 }
 
 -(void)insertRule:(PreviewRule*)rule atIndex:(NSUInteger)index
@@ -85,7 +80,7 @@ NSString* PreviewText(NSString* traditionalChinese, NSString* english)
 -(void)addRule:(PreviewRule*)rule
 {
     [self insertRule:rule atIndex:self.rules.count];
-    [self.undoManager setActionName:PreviewText(@"新增規則", @"Add Rule")];
+    [self.undoManager setActionName:PreviewText(@"Add Rule")];
 }
 
 -(void)removeRule:(PreviewRule*)rule
@@ -94,6 +89,6 @@ NSString* PreviewText(NSString* traditionalChinese, NSString* english)
     if(index == NSNotFound) return;
     [self.rules removeObjectAtIndex:index];
     [self.undoManager registerUndoWithTarget:self handler:^(PreviewModel* target) { [target insertRule:rule atIndex:index]; }];
-    [self.undoManager setActionName:PreviewText(@"刪除規則", @"Delete Rule")];
+    [self.undoManager setActionName:PreviewText(@"Delete Rule")];
 }
 @end

@@ -7,4 +7,5 @@
 -(void)showConnection:(id)sender;
 -(void)undo:(id)sender;
 -(void)redo:(id)sender;
+-(void)reloadLanguage;
 @end
