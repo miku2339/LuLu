@@ -1,19 +1,22 @@
 # LuLu Interface Preview
 
-An independent, native AppKit / Objective-C design prototype for LuLu. Requires macOS 11 or later and Apple's command-line developer tools. The production app retains its macOS 10.15 deployment target.
+An independent, native AppKit / Objective-C design prototype for LuLu. Runs on macOS 11 or later; building requires Apple's command-line developer tools with the macOS 26 SDK or later. The production app retains its macOS 10.15 deployment target.
 
 ```sh
 ./script/build_and_run.sh           # Traditional Chinese
 ./script/build_and_run.sh --english # English
+./script/build_and_run.sh --english --light # English, light appearance
 ./script/test_preview.sh
 ```
 
 The bundle is created at `outputs/LuLu Interface Preview.app`, with identifier `org.local.lulu.interface-preview`. The Codex Run action starts this preview.
 
+![App Rules in the native preview](preview.jpg)
+
 ## Experience
 
 - Overview: disconnected service status, sample rule counts and quick navigation.
-- App rules: search by name, path or destination; filter by action or disabled status; inspect, add, change, disable and delete sample rules. Undo / redo use Command-Z / Shift-Command-Z.
+- App rules (the opening page): search by name, path or destination; filter by action or disabled status; inspect, add, change, disable and delete sample rules. Undo / redo use Command-Z / Shift-Command-Z.
 - Connection alert: app, destination, scope, duration, expandable details and a visible sample decision. Custom duration accepts 1–1440 whole minutes.
 - Settings: grouped, labelled native switches. State remains in memory while the preview is open.
 - Command-1 through Command-4 navigate between pages. All form fields and switches have accessibility labels. System controls, semantic text colors and Auto Layout support light and dark appearances.
@@ -26,7 +29,9 @@ The production UI changes are in the existing Rules, Preferences and Alert contr
 
 ## Design
 
-Spacing uses 4 / 8 / 12 / 16 / 20 / 28 pt increments. System typography uses 28 pt page titles, 21–23 pt status / dialog titles, 13–15 pt primary labels and 11–12 pt supporting details. The navigation sidebar uses the native material; content surfaces use system background colors with 12 pt corners. SF Symbols complement visible text; allow / block remain understandable without color.
+The sidebar and search controls use native `NSGlassEffectView` on macOS 26 or later, with `NSVisualEffectView` on older systems and an opaque surface when Reduce Transparency is enabled at creation. Content uses system colors, native app icons, compact rule rows and a separate inspector. The overview shows service state and rule totals; settings use grouped rows. Selected rule actions adopt the system selection text color.
+
+The window uses 23 pt page titles, 13–16 pt primary labels and 11–12 pt supporting details. Allow and block actions have explicit text labels as well as color.
 
 Search includes an explicit empty state. Invalid forms keep their input and show inline errors. Decision buttons have no default Return action. The prototype contains no artificial loading screen or continuous animation.
 
