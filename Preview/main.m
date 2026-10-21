@@ -72,13 +72,15 @@
 -(BOOL)applicationShouldTerminateAfterLastWindowClosed:(NSApplication*)sender { return YES; }
 -(void)undo:(id)sender
 {
-    NSResponder* responder = self.controller.window.firstResponder;
+    NSWindow* activeWindow = self.controller.window.attachedSheet ?: self.controller.window;
+    NSResponder* responder = activeWindow.firstResponder;
     if([responder isKindOfClass:NSTextView.class] && [(NSTextView*)responder isFieldEditor]) [responder.undoManager undo];
     else [self.controller undo:sender];
 }
 -(void)redo:(id)sender
 {
-    NSResponder* responder = self.controller.window.firstResponder;
+    NSWindow* activeWindow = self.controller.window.attachedSheet ?: self.controller.window;
+    NSResponder* responder = activeWindow.firstResponder;
     if([responder isKindOfClass:NSTextView.class] && [(NSTextView*)responder isFieldEditor]) [responder.undoManager redo];
     else [self.controller redo:sender];
 }

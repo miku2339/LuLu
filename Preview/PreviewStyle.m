@@ -1,10 +1,20 @@
 // SPDX-License-Identifier: GPL-3.0-only
 #import "PreviewStyle.h"
-#import <QuartzCore/QuartzCore.h>
 
 static void PreviewDrawWithAppearance(NSView* view, void (^drawing)(void))
 {
     [view.effectiveAppearance performAsCurrentDrawingAppearance:drawing];
+}
+
+static BOOL PreviewIncreaseContrast(void)
+{
+    return NSWorkspace.sharedWorkspace.accessibilityDisplayShouldIncreaseContrast;
+}
+
+static CGFloat PreviewHairline(NSView* view)
+{
+    CGFloat scale = view.window.backingScaleFactor ?: NSScreen.mainScreen.backingScaleFactor ?: 2.0;
+    return PreviewIncreaseContrast() ? 1.0 : 1.0 / scale;
 }
 
 NSColor* PreviewCanvasColor(void)
@@ -29,7 +39,11 @@ static void PreviewPinContent(NSView* content, NSView* container, CGFloat paddin
     ]];
 }
 
+#pragma mark - Surfaces
+
 @interface PreviewSurfaceView : NSView
+@property(nonatomic) CGFloat radius;
+@property(nonatomic) BOOL recessed;
 @end
 
 @implementation PreviewSurfaceView
@@ -42,16 +56,25 @@ static void PreviewPinContent(NSView* content, NSView* container, CGFloat paddin
 -(void)drawRect:(NSRect)dirtyRect
 {
     PreviewDrawWithAppearance(self, ^{
-        NSRect bounds = NSInsetRect(self.bounds, 0.5, 0.5);
-        NSBezierPath* shape = [NSBezierPath bezierPathWithRoundedRect:bounds xRadius:10 yRadius:10];
-        [NSGraphicsContext saveGraphicsState];
-        [shape addClip];
+        CGFloat line = PreviewHairline(self);
+        NSRect bounds = NSInsetRect(self.bounds, line / 2.0, line / 2.0);
+        NSBezierPath* shape = [NSBezierPath bezierPathWithRoundedRect:bounds xRadius:self.radius yRadius:self.radius];
+        if(self.recessed)
+        {
+            [[NSColor.labelColor colorWithAlphaComponent:0.045] setFill];
+            [shape fill];
+            if(PreviewIncreaseContrast())
+            {
+                [NSColor.separatorColor setStroke];
+                shape.lineWidth = line;
+                [shape stroke];
+            }
+            return;
+        }
         [PreviewSurfaceColor() setFill];
-        NSRectFill(self.bounds);
-        [NSGraphicsContext restoreGraphicsState];
-
+        [shape fill];
         [NSColor.separatorColor setStroke];
-        shape.lineWidth = NSWorkspace.sharedWorkspace.accessibilityDisplayShouldIncreaseContrast ? 1.0 : 0.5;
+        shape.lineWidth = line;
         [shape stroke];
     });
 }
@@ -62,20 +85,42 @@ static void PreviewPinContent(NSView* content, NSView* container, CGFloat paddin
     self.needsDisplay = YES;
 }
 
+-(void)viewDidChangeBackingProperties
+{
+    [super viewDidChangeBackingProperties];
+    self.needsDisplay = YES;
+}
+
 @end
 
-NSView* PreviewSurface(NSView* content, CGFloat padding)
+NSView* PreviewSurfaceWithRadius(NSView* content, CGFloat padding, CGFloat cornerRadius)
 {
     PreviewSurfaceView* surface = [[PreviewSurfaceView alloc] init];
     surface.translatesAutoresizingMaskIntoConstraints = NO;
+    surface.radius = cornerRadius;
     PreviewPinContent(content, surface, padding);
     return surface;
+}
+
+NSView* PreviewSurface(NSView* content, CGFloat padding)
+{
+    return PreviewSurfaceWithRadius(content, padding, 12);
+}
+
+NSView* PreviewWell(NSView* content, CGFloat padding)
+{
+    PreviewSurfaceView* well = [[PreviewSurfaceView alloc] init];
+    well.translatesAutoresizingMaskIntoConstraints = NO;
+    well.radius = 10;
+    well.recessed = YES;
+    PreviewPinContent(content, well, padding);
+    return well;
 }
 
 NSView* PreviewGlass(NSView* content, CGFloat padding, CGFloat cornerRadius)
 {
     if(NSWorkspace.sharedWorkspace.accessibilityDisplayShouldReduceTransparency)
-        return PreviewSurface(content, padding);
+        return PreviewSurfaceWithRadius(content, padding, cornerRadius);
 
     NSView* contentHost = [[NSView alloc] init];
     contentHost.translatesAutoresizingMaskIntoConstraints = NO;
@@ -93,7 +138,7 @@ NSView* PreviewGlass(NSView* content, CGFloat padding, CGFloat cornerRadius)
     else
     {
         NSVisualEffectView* material = [[NSVisualEffectView alloc] init];
-        material.material = NSVisualEffectMaterialPopover;
+        material.material = NSVisualEffectMaterialSidebar;
         material.blendingMode = NSVisualEffectBlendingModeWithinWindow;
         material.state = NSVisualEffectStateFollowsWindowActiveState;
         material.wantsLayer = YES;
@@ -112,23 +157,34 @@ NSView* PreviewGlass(NSView* content, CGFloat padding, CGFloat cornerRadius)
     return result;
 }
 
+#pragma mark - Symbol tile
+
 NSView* PreviewSymbol(NSString* symbol, CGFloat size, NSColor* tint)
 {
-    CGFloat tileSize = MAX(36.0, size);
-    CGFloat symbolSize = MIN(24.0, MAX(14.0, tileSize * 0.5));
+    PreviewSurfaceView* tile = [[PreviewSurfaceView alloc] init];
+    tile.translatesAutoresizingMaskIntoConstraints = NO;
+    tile.recessed = YES;
+    tile.radius = round(size * 0.24);
+    tile.accessibilityElement = NO;
+
     NSImageView* image = [[NSImageView alloc] init];
     image.image = [NSImage imageWithSystemSymbolName:symbol accessibilityDescription:nil];
-    image.symbolConfiguration = [NSImageSymbolConfiguration configurationWithPointSize:symbolSize weight:NSFontWeightMedium];
+    image.symbolConfiguration = [NSImageSymbolConfiguration configurationWithPointSize:round(size * 0.46) weight:NSFontWeightRegular];
     image.contentTintColor = tint;
     image.imageScaling = NSImageScaleProportionallyDown;
     image.translatesAutoresizingMaskIntoConstraints = NO;
     image.accessibilityElement = NO;
+    [tile addSubview:image];
     [NSLayoutConstraint activateConstraints:@[
-        [image.widthAnchor constraintEqualToConstant:tileSize],
-        [image.heightAnchor constraintEqualToConstant:tileSize]
+        [tile.widthAnchor constraintEqualToConstant:size],
+        [tile.heightAnchor constraintEqualToConstant:size],
+        [image.centerXAnchor constraintEqualToAnchor:tile.centerXAnchor],
+        [image.centerYAnchor constraintEqualToAnchor:tile.centerYAnchor]
     ]];
-    return image;
+    return tile;
 }
+
+#pragma mark - Badge
 
 @interface PreviewStatusDotView : NSView
 @property(nonatomic, strong) NSColor* tint;
@@ -159,28 +215,29 @@ NSView* PreviewBadge(NSString* text, NSColor* tint)
     dot.tint = tint;
     dot.accessibilityElement = NO;
     [NSLayoutConstraint activateConstraints:@[
-        [dot.widthAnchor constraintEqualToConstant:5.0],
-        [dot.heightAnchor constraintEqualToConstant:5.0]
+        [dot.widthAnchor constraintEqualToConstant:7.0],
+        [dot.heightAnchor constraintEqualToConstant:7.0]
     ]];
 
-    NSTextField* label = [NSTextField labelWithString:text];
+    NSTextField* label = [NSTextField wrappingLabelWithString:text];
     label.translatesAutoresizingMaskIntoConstraints = NO;
-    label.font = [NSFont systemFontOfSize:12 weight:NSFontWeightRegular];
+    label.font = [NSFont systemFontOfSize:11 weight:NSFontWeightMedium];
     label.textColor = NSColor.secondaryLabelColor;
     label.accessibilityLabel = text;
+    [label setContentCompressionResistancePriority:NSLayoutPriorityDefaultLow forOrientation:NSLayoutConstraintOrientationHorizontal];
 
     NSStackView* badge = [NSStackView stackViewWithViews:@[dot, label]];
     badge.orientation = NSUserInterfaceLayoutOrientationHorizontal;
     badge.alignment = NSLayoutAttributeCenterY;
-    badge.spacing = 6.0;
+    badge.spacing = 7.0;
     badge.translatesAutoresizingMaskIntoConstraints = NO;
-    badge.accessibilityElement = NO;
-    [badge setContentHuggingPriority:NSLayoutPriorityRequired forOrientation:NSLayoutConstraintOrientationHorizontal];
-    [badge setContentCompressionResistancePriority:NSLayoutPriorityRequired forOrientation:NSLayoutConstraintOrientationHorizontal];
     return badge;
 }
 
+#pragma mark - Dividers
+
 @interface PreviewDividerView : NSView
+@property(nonatomic) BOOL vertical;
 @end
 
 @implementation PreviewDividerView
@@ -188,8 +245,12 @@ NSView* PreviewBadge(NSString* text, NSColor* tint)
 -(void)drawRect:(NSRect)dirtyRect
 {
     PreviewDrawWithAppearance(self, ^{
+        CGFloat line = PreviewHairline(self);
+        NSRect rect = self.bounds;
+        if(self.vertical) rect.size.width = line;
+        else rect.size.height = line;
         [NSColor.separatorColor setFill];
-        NSRectFill(self.bounds);
+        NSRectFillUsingOperation(rect, NSCompositingOperationSourceOver);
     });
 }
 
@@ -199,8 +260,13 @@ NSView* PreviewBadge(NSString* text, NSColor* tint)
     self.needsDisplay = YES;
 }
 
-@end
+-(void)viewDidChangeBackingProperties
+{
+    [super viewDidChangeBackingProperties];
+    self.needsDisplay = YES;
+}
 
+@end
 
 NSView* PreviewDivider(void)
 {
@@ -213,87 +279,139 @@ NSView* PreviewDivider(void)
     return divider;
 }
 
-@interface PreviewNavigationButtonCell : NSButtonCell
-@end
-
-@implementation PreviewNavigationButtonCell
--(void)drawInteriorWithFrame:(NSRect)cellFrame inView:(NSView*)controlView
+NSView* PreviewVerticalDivider(void)
 {
-    [super drawInteriorWithFrame:NSInsetRect(cellFrame, 12, 0) inView:controlView];
+    PreviewDividerView* divider = [[PreviewDividerView alloc] init];
+    divider.vertical = YES;
+    divider.translatesAutoresizingMaskIntoConstraints = NO;
+    divider.accessibilityElement = NO;
+    [divider.widthAnchor constraintEqualToConstant:1.0].active = YES;
+    return divider;
 }
-@end
+
+#pragma mark - Sidebar navigation
 
 @interface PreviewNavigationButtonControl : NSButton
+@property(nonatomic, strong) NSImageView* iconView;
+@property(nonatomic, strong) NSTextField* titleField;
+@property(nonatomic, strong) NSTrackingArea* hoverArea;
+@property(nonatomic) BOOL hovering;
 @end
 
 @implementation PreviewNavigationButtonControl
 
-+(Class)cellClass { return PreviewNavigationButtonCell.class; }
+-(NSView*)hitTest:(NSPoint)point
+{
+    return [super hitTest:point] ? self : nil;
+}
+
+-(void)updateAppearance
+{
+    BOOL selected = self.state == NSControlStateValueOn;
+    self.iconView.contentTintColor = NSColor.controlAccentColor;
+    self.titleField.textColor = NSColor.labelColor;
+    self.titleField.font = [NSFont systemFontOfSize:13 weight:selected ? NSFontWeightSemibold : NSFontWeightRegular];
+    self.needsDisplay = YES;
+}
 
 -(void)setState:(NSControlStateValue)state
 {
     [super setState:state];
-    self.contentTintColor = state == NSControlStateValueOn ? NSColor.labelColor : NSColor.secondaryLabelColor;
-    self.needsDisplay = YES;
+    [self updateAppearance];
 }
 
--(void)setEnabled:(BOOL)enabled
+-(void)updateTrackingAreas
 {
-    [super setEnabled:enabled];
-    self.needsDisplay = YES;
+    [super updateTrackingAreas];
+    if(self.hoverArea) [self removeTrackingArea:self.hoverArea];
+    self.hoverArea = [[NSTrackingArea alloc] initWithRect:NSZeroRect
+        options:NSTrackingMouseEnteredAndExited | NSTrackingActiveInKeyWindow | NSTrackingInVisibleRect owner:self userInfo:nil];
+    [self addTrackingArea:self.hoverArea];
 }
+
+-(void)mouseEntered:(NSEvent*)event { self.hovering = YES; self.needsDisplay = YES; }
+-(void)mouseExited:(NSEvent*)event { self.hovering = NO; self.needsDisplay = YES; }
 
 -(void)drawRect:(NSRect)dirtyRect
 {
+    BOOL selected = self.state == NSControlStateValueOn;
+    if(!selected && !self.hovering) return;
     PreviewDrawWithAppearance(self, ^{
-        if(self.state == NSControlStateValueOn)
-        {
-            NSBezierPath* selection = [NSBezierPath bezierPathWithRoundedRect:NSInsetRect(self.bounds, 1.0, 1.0)
-                xRadius:9 yRadius:9];
-            [[NSColor.selectedContentBackgroundColor colorWithAlphaComponent:0.20] setFill];
-            [selection fill];
-        }
-
-        [super drawRect:dirtyRect];
-
-        if(self.window.firstResponder == self)
-        {
-            [NSGraphicsContext saveGraphicsState];
-            NSSetFocusRingStyle(NSFocusRingOnly);
-            NSBezierPath* focus = [NSBezierPath bezierPathWithRoundedRect:NSInsetRect(self.bounds, 2.0, 2.0)
-                xRadius:8 yRadius:8];
-            [focus fill];
-            [NSGraphicsContext restoreGraphicsState];
-        }
+        NSBezierPath* shape = [NSBezierPath bezierPathWithRoundedRect:self.bounds xRadius:8 yRadius:8];
+        NSColor* fill = selected ? [NSColor.controlAccentColor colorWithAlphaComponent:PreviewIncreaseContrast() ? 0.28 : 0.16]
+            : [NSColor.labelColor colorWithAlphaComponent:0.05];
+        [fill setFill];
+        [shape fill];
     });
+}
+
+-(void)drawFocusRingMask
+{
+    [[NSBezierPath bezierPathWithRoundedRect:self.bounds xRadius:8 yRadius:8] fill];
+}
+
+-(NSRect)focusRingMaskBounds
+{
+    return self.bounds;
 }
 
 -(void)viewDidChangeEffectiveAppearance
 {
     [super viewDidChangeEffectiveAppearance];
-    self.contentTintColor = self.state == NSControlStateValueOn ? NSColor.labelColor : NSColor.secondaryLabelColor;
-    self.needsDisplay = YES;
+    [self updateAppearance];
 }
 
 @end
 
-NSButton* PreviewNavigationButton(NSString* title, NSString* symbol, id target, SEL action)
+NSButton* PreviewNavigationButton(NSString* title, NSString* symbol, NSString* shortcut, id target, SEL action)
 {
-    PreviewNavigationButtonControl* button = [PreviewNavigationButtonControl buttonWithTitle:title target:target action:action];
+    PreviewNavigationButtonControl* button = [[PreviewNavigationButtonControl alloc] init];
     button.translatesAutoresizingMaskIntoConstraints = NO;
     button.buttonType = NSButtonTypePushOnPushOff;
     button.bordered = NO;
-    button.bezelStyle = NSBezelStyleRegularSquare;
+    button.title = @"";
+    button.imagePosition = NSNoImage;
     button.focusRingType = NSFocusRingTypeExterior;
-    button.alignment = NSTextAlignmentLeft;
-    button.font = [NSFont systemFontOfSize:13.5 weight:NSFontWeightMedium];
-    NSImage* image = [NSImage imageWithSystemSymbolName:symbol accessibilityDescription:nil];
-    button.image = [image imageWithSymbolConfiguration:
-        [NSImageSymbolConfiguration configurationWithPointSize:15 weight:NSFontWeightMedium]];
-    button.imagePosition = NSImageLeading;
-    button.imageHugsTitle = YES;
-    button.contentTintColor = NSColor.secondaryLabelColor;
+    button.target = target;
+    button.action = action;
     button.accessibilityLabel = title;
-    [button.heightAnchor constraintEqualToConstant:40.0].active = YES;
+    [button.cell setAccessibilityLabel:title];
+    [button.cell setAccessibilityRole:NSAccessibilityButtonRole];
+
+    NSImageView* icon = [[NSImageView alloc] init];
+    icon.image = [NSImage imageWithSystemSymbolName:symbol accessibilityDescription:nil];
+    icon.symbolConfiguration = [NSImageSymbolConfiguration configurationWithPointSize:14 weight:NSFontWeightMedium];
+    icon.translatesAutoresizingMaskIntoConstraints = NO;
+    icon.accessibilityElement = NO;
+    [icon.widthAnchor constraintEqualToConstant:20].active = YES;
+    [icon setContentHuggingPriority:NSLayoutPriorityRequired forOrientation:NSLayoutConstraintOrientationHorizontal];
+
+    NSTextField* label = [NSTextField labelWithString:title];
+    label.translatesAutoresizingMaskIntoConstraints = NO;
+    label.lineBreakMode = NSLineBreakByTruncatingTail;
+    label.accessibilityElement = NO;
+    [label setContentHuggingPriority:1 forOrientation:NSLayoutConstraintOrientationHorizontal];
+    [label setContentCompressionResistancePriority:NSLayoutPriorityDefaultLow forOrientation:NSLayoutConstraintOrientationHorizontal];
+
+    NSTextField* key = [NSTextField labelWithString:shortcut];
+    key.translatesAutoresizingMaskIntoConstraints = NO;
+    key.font = [NSFont monospacedDigitSystemFontOfSize:11 weight:NSFontWeightRegular];
+    key.textColor = NSColor.tertiaryLabelColor;
+    key.identifier = @"technical";
+    key.accessibilityElement = NO;
+    [key setContentHuggingPriority:NSLayoutPriorityRequired forOrientation:NSLayoutConstraintOrientationHorizontal];
+    [key setContentCompressionResistancePriority:NSLayoutPriorityRequired forOrientation:NSLayoutConstraintOrientationHorizontal];
+
+    NSStackView* row = [NSStackView stackViewWithViews:@[icon, label, key]];
+    row.orientation = NSUserInterfaceLayoutOrientationHorizontal;
+    row.alignment = NSLayoutAttributeCenterY;
+    row.spacing = 8;
+    row.edgeInsets = NSEdgeInsetsMake(0, 9, 0, 10);
+    PreviewPinContent(row, button, 0);
+
+    button.iconView = icon;
+    button.titleField = label;
+    [button updateAppearance];
+    [button.heightAnchor constraintEqualToConstant:30.0].active = YES;
     return button;
 }

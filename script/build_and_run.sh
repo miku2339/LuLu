@@ -53,8 +53,8 @@ cat > "$APP_BUNDLE/Contents/Info.plist" <<'PLIST'
 <key>CFBundleName</key><string>LuLu Interface Preview</string>
 <key>CFBundleDisplayName</key><string>LuLu Interface Preview</string>
 <key>CFBundlePackageType</key><string>APPL</string>
-<key>CFBundleShortVersionString</key><string>0.3.0</string>
-<key>CFBundleVersion</key><string>3</string>
+<key>CFBundleShortVersionString</key><string>0.4.0</string>
+<key>CFBundleVersion</key><string>4</string>
 <key>LSMinimumSystemVersion</key><string>11.0</string>
 <key>CFBundleDevelopmentRegion</key><string>en</string>
 <key>NSPrincipalClass</key><string>NSApplication</string>
