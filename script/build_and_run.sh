@@ -39,7 +39,7 @@ fi
 pkill -x "$APP_NAME" >/dev/null 2>&1 || true
 mkdir -p "$APP_BUNDLE/Contents/MacOS" "$APP_BUNDLE/Contents/Resources"
 xcrun clang -fobjc-arc -Wall -Wextra -Wno-unused-parameter -mmacosx-version-min=11.0 \
-    -framework Cocoa "$ROOT_DIR/Preview/main.m" "$ROOT_DIR/Preview/PreviewController.m" \
+    -framework Cocoa -framework QuartzCore "$ROOT_DIR/Preview/main.m" "$ROOT_DIR/Preview/PreviewController.m" \
     "$ROOT_DIR/Preview/PreviewModel.m" "$ROOT_DIR/Preview/PreviewStyle.m" "$ROOT_DIR/Preview/PreviewLocalization.m" -o "$APP_BINARY"
 cp "$ROOT_DIR/LuLu/App/Assets.xcassets/AppIcon.appiconset/icon_128x128.png" "$APP_BUNDLE/Contents/Resources/LuLuIcon.png"
 cp -R "$ROOT_DIR/Preview/Resources/" "$APP_BUNDLE/Contents/Resources/"

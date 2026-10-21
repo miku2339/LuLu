@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 #import "PreviewStyle.h"
+#import <QuartzCore/QuartzCore.h>
 
 static void PreviewDrawWithAppearance(NSView* view, void (^drawing)(void))
 {
@@ -155,6 +156,75 @@ NSView* PreviewGlass(NSView* content, CGFloat padding, CGFloat cornerRadius)
     }
     result.translatesAutoresizingMaskIntoConstraints = NO;
     return result;
+}
+
+NSVisualEffectView* PreviewMaterial(NSVisualEffectMaterial material, NSVisualEffectBlendingMode blending)
+{
+    NSVisualEffectView* view = [[NSVisualEffectView alloc] init];
+    view.material = material;
+    view.blendingMode = blending;
+    view.state = NSVisualEffectStateFollowsWindowActiveState;
+    view.translatesAutoresizingMaskIntoConstraints = NO;
+    return view;
+}
+
+@interface PreviewPanelView : NSView
+@property(nonatomic) CGFloat radius;
+@end
+
+@implementation PreviewPanelView
+
+-(instancetype)initWithFrame:(NSRect)frame
+{
+    self = [super initWithFrame:frame];
+    if(self) self.wantsLayer = YES;
+    return self;
+}
+
+-(BOOL)wantsUpdateLayer
+{
+    return YES;
+}
+
+-(void)updateLayer
+{
+    self.layer.cornerRadius = self.radius;
+    self.layer.cornerCurve = kCACornerCurveContinuous;
+    self.layer.masksToBounds = YES;
+    self.layer.borderWidth = PreviewHairline(self);
+    [self.effectiveAppearance performAsCurrentDrawingAppearance:^{
+        self.layer.borderColor = NSColor.separatorColor.CGColor;
+    }];
+}
+
+-(void)viewDidChangeEffectiveAppearance
+{
+    [super viewDidChangeEffectiveAppearance];
+    self.needsDisplay = YES;
+}
+
+-(void)viewDidChangeBackingProperties
+{
+    [super viewDidChangeBackingProperties];
+    self.needsDisplay = YES;
+}
+
+@end
+
+NSView* PreviewPanel(NSView* content, CGFloat cornerRadius)
+{
+    PreviewPanelView* panel = [[PreviewPanelView alloc] init];
+    panel.translatesAutoresizingMaskIntoConstraints = NO;
+    panel.radius = cornerRadius;
+    PreviewPinContent(content, panel, 0);
+    return panel;
+}
+
+NSView* PreviewFrostedSurface(NSView* content, CGFloat padding)
+{
+    NSVisualEffectView* material = PreviewMaterial(NSVisualEffectMaterialPopover, NSVisualEffectBlendingModeWithinWindow);
+    PreviewPinContent(content, material, padding);
+    return PreviewPanel(material, 12);
 }
 
 #pragma mark - Symbol tile

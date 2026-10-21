@@ -11,6 +11,12 @@ FOUNDATION_EXPORT NSView* PreviewSurface(NSView* content, CGFloat padding);
 FOUNDATION_EXPORT NSView* PreviewSurfaceWithRadius(NSView* content, CGFloat padding, CGFloat cornerRadius);
 // Recessed fill used for read-only detail blocks inside a surface or sheet.
 FOUNDATION_EXPORT NSView* PreviewWell(NSView* content, CGFloat padding);
+// Frosted system material. The system makes it opaque when Reduce Transparency is on.
+FOUNDATION_EXPORT NSVisualEffectView* PreviewMaterial(NSVisualEffectMaterial material, NSVisualEffectBlendingMode blending);
+// Container that clips its children to rounded corners and draws a hairline border above them.
+FOUNDATION_EXPORT NSView* PreviewPanel(NSView* content, CGFloat cornerRadius);
+// Rounded, hairline-bordered card on a frosted material, for grouped content on the frosted page background.
+FOUNDATION_EXPORT NSView* PreviewFrostedSurface(NSView* content, CGFloat padding);
 // Liquid Glass on macOS 26, a material on older systems, opaque with Reduce Transparency.
 FOUNDATION_EXPORT NSView* PreviewGlass(NSView* content, CGFloat padding, CGFloat cornerRadius);
 // Rounded tile with an SF Symbol, used where no real app icon exists.

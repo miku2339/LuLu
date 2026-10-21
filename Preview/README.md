@@ -40,7 +40,7 @@ The production UI changes are in the existing Rules, Preferences and Alert contr
 
 ## Design
 
-The inset sidebar and search controls use native `NSGlassEffectView` on macOS 26 or later, with `NSVisualEffectView` on older systems and an opaque surface when Reduce Transparency is enabled at creation. The rules page fills the window with a unified list and inspector, compact app rows, inline action controls and an add/delete bar. Overview and connection details use a readable content width; settings use grouped rows. Content uses system colors and native app icons. Selected rule actions adopt the system selection text color.
+The inset sidebar and search controls use native `NSGlassEffectView` on macOS 26 or later, with `NSVisualEffectView` on older systems and an opaque surface when Reduce Transparency is enabled at creation. Overview, connection and settings groups use frosted system materials, as do the inspector and sheets; the dense rule list stays opaque. The rules page fills the window with a unified list and inspector, compact app rows, inline action controls and an add/delete bar. Overview and connection details use a readable content width; settings use grouped rows. Content uses system colors and native app icons. Selected rule actions adopt the system selection text color.
 
 The window uses 22 pt page titles, 13–15 pt primary labels and 11–12 pt supporting details. Allow and block actions have explicit text and symbols as well as color. Navigation and form controls mirror for right-to-left languages, while technical values retain left-to-right writing.
 

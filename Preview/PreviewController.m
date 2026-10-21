@@ -274,13 +274,14 @@ static NSStackView* ActionTag(PreviewRule* rule, CGFloat size)
 
 #pragma mark - Views
 
+// Opaque reading surface behind the rule list.
 @interface PreviewCanvas : NSView
 @end
 @implementation PreviewCanvas
 -(void)drawRect:(NSRect)dirtyRect
 {
     [self.effectiveAppearance performAsCurrentDrawingAppearance:^{
-        [PreviewCanvasColor() setFill];
+        [PreviewSurfaceColor() setFill];
         NSRectFill(NSIntersectionRect(dirtyRect, self.bounds));
     }];
 }
@@ -414,7 +415,8 @@ static NSStackView* ActionTag(PreviewRule* rule, CGFloat size)
     backdrop.material = NSVisualEffectMaterialSidebar;
     backdrop.blendingMode = NSVisualEffectBlendingModeBehindWindow;
     backdrop.state = NSVisualEffectStateFollowsWindowActiveState;
-    Fill(backdrop, root, 0);
+    backdrop.translatesAutoresizingMaskIntoConstraints = NO;
+    [root addSubview:backdrop];
 
     NSTextField* productName = Line(@"LuLu", 14, NSFontWeightSemibold);
     NSTextField* productNote = Line(PreviewText(@"Interface preview"), 11, NSFontWeightRegular);
@@ -468,9 +470,11 @@ static NSStackView* ActionTag(PreviewRule* rule, CGFloat size)
 
     NSView* sidebar = PreviewGlass(sidebarContent, 0, 18);
     [root addSubview:sidebar];
-    self.pageView = [[PreviewCanvas alloc] init];
-    self.pageView.translatesAutoresizingMaskIntoConstraints = NO;
-    [root addSubview:self.pageView];
+    // Separate behind-window regions keep the sidebar material from overriding the content material.
+    NSVisualEffectView* contentMaterial = PreviewMaterial(NSVisualEffectMaterialUnderWindowBackground, NSVisualEffectBlendingModeBehindWindow);
+    [root addSubview:contentMaterial];
+    self.pageView = [[NSView alloc] init];
+    Fill(self.pageView, contentMaterial, 0);
 
     // Icon, gaps, row and sidebar insets, and the shortcut column.
     CGFloat shortcutWidth = TextWidth(@"⌘4", [NSFont monospacedDigitSystemFontOfSize:11 weight:NSFontWeightRegular]);
@@ -480,10 +484,14 @@ static NSStackView* ActionTag(PreviewRule* rule, CGFloat size)
         [sidebar.topAnchor constraintEqualToAnchor:root.topAnchor constant:PreviewSidebarInset],
         [sidebar.bottomAnchor constraintEqualToAnchor:root.bottomAnchor constant:-PreviewSidebarInset],
         [sidebar.widthAnchor constraintEqualToConstant:sidebarWidth],
-        [Leading(self.pageView) constraintEqualToAnchor:Trailing(sidebar) constant:Edge(PreviewSidebarInset)],
-        [Trailing(self.pageView) constraintEqualToAnchor:Trailing(root)],
-        [self.pageView.topAnchor constraintEqualToAnchor:root.topAnchor],
-        [self.pageView.bottomAnchor constraintEqualToAnchor:root.bottomAnchor]
+        [Leading(contentMaterial) constraintEqualToAnchor:Trailing(sidebar) constant:Edge(PreviewSidebarInset)],
+        [Trailing(contentMaterial) constraintEqualToAnchor:Trailing(root)],
+        [contentMaterial.topAnchor constraintEqualToAnchor:root.topAnchor],
+        [contentMaterial.bottomAnchor constraintEqualToAnchor:root.bottomAnchor],
+        [Leading(backdrop) constraintEqualToAnchor:Leading(root)],
+        [Trailing(backdrop) constraintEqualToAnchor:Leading(self.pageView)],
+        [backdrop.topAnchor constraintEqualToAnchor:root.topAnchor],
+        [backdrop.bottomAnchor constraintEqualToAnchor:root.bottomAnchor]
     ]];
 }
 
@@ -562,7 +570,7 @@ static NSStackView* ActionTag(PreviewRule* rule, CGFloat size)
     NSStackView* serviceText = Stack(@[Label(PreviewText(@"Firewall service disconnected"), 15, NSFontWeightSemibold),
         Secondary(PreviewText(@"This preview does not monitor or block network connections."))], NSUserInterfaceLayoutOrientationVertical, 3);
     NSStackView* service = Stack(@[LuLuIcon(44), serviceText], NSUserInterfaceLayoutOrientationHorizontal, 14);
-    AddWide(page, PreviewSurface(service, 18));
+    AddWide(page, PreviewFrostedSurface(service, 18));
 
     NSUInteger allowed = [[self.model rulesMatching:@"" filter:1] count];
     NSUInteger blocked = [[self.model rulesMatching:@"" filter:2] count];
@@ -600,7 +608,7 @@ static NSStackView* ActionTag(PreviewRule* rule, CGFloat size)
         row.edgeInsets = NSEdgeInsetsMake(8, 0, 8, 0);
         AddWide(list, row);
     }
-    AddWide(page, PreviewSurface(list, 0));
+    AddWide(page, PreviewFrostedSurface(list, 0));
 
     NSStackView* footer = Stack(@[Caption(PreviewText(@"Changes last for this preview session.")), Spacer(),
         Button(PreviewText(@"View Connection Alert"), self, @selector(openConnections:))], NSUserInterfaceLayoutOrientationHorizontal, 12);
@@ -693,14 +701,13 @@ static NSStackView* ActionTag(PreviewRule* rule, CGFloat size)
     NSStackView* bar = Stack(@[add, self.removeButton, Spacer(), self.countLabel], NSUserInterfaceLayoutOrientationHorizontal, 2);
     [bar setCustomSpacing:12 afterView:self.removeButton];
 
-    NSView* listPane = [[NSView alloc] init];
+    NSView* listPane = [[PreviewCanvas alloc] init];
     listPane.translatesAutoresizingMaskIntoConstraints = NO;
     NSView* barDivider = PreviewDivider();
     for(NSView* view in @[listScroll, empty, barDivider, bar]) [listPane addSubview:view];
 
     // Inspector
-    NSView* inspectorPane = [[NSView alloc] init];
-    inspectorPane.translatesAutoresizingMaskIntoConstraints = NO;
+    NSView* inspectorPane = PreviewMaterial(NSVisualEffectMaterialSidebar, NSVisualEffectBlendingModeWithinWindow);
     self.inspector = Stack(@[], NSUserInterfaceLayoutOrientationVertical, 10);
     [inspectorPane addSubview:self.inspector];
 
@@ -708,7 +715,7 @@ static NSStackView* ActionTag(PreviewRule* rule, CGFloat size)
     NSView* body = [[NSView alloc] init];
     body.translatesAutoresizingMaskIntoConstraints = NO;
     for(NSView* view in @[listPane, columnDivider, inspectorPane]) [body addSubview:view];
-    NSView* surface = PreviewSurfaceWithRadius(body, 0, 12);
+    NSView* surface = PreviewPanel(body, 12);
 
     for(NSView* view in @[header, controlBar, surface]) [page addSubview:view];
 
@@ -954,6 +961,7 @@ static NSStackView* ActionTag(PreviewRule* rule, CGFloat size)
 {
     self.sheet = [[NSPanel alloc] initWithContentRect:NSMakeRect(0, 0, width, 420) styleMask:NSWindowStyleMaskTitled backing:NSBackingStoreBuffered defer:NO];
     self.sheet.title = @"LuLu Interface Preview";
+    Fill(PreviewMaterial(NSVisualEffectMaterialSheet, NSVisualEffectBlendingModeBehindWindow), self.sheet.contentView, 0);
     NSTextField* mode = Caption(PreviewText(@"Preview mode · Sample data"));
     NSStackView* text = Stack(@[mode, Label(title, 15, NSFontWeightBold)], NSUserInterfaceLayoutOrientationVertical, 2);
     if(message) { NSTextField* body = Secondary(message); [text addArrangedSubview:body]; [text setCustomSpacing:4 afterView:text.arrangedSubviews[1]]; }
@@ -1107,7 +1115,7 @@ static NSStackView* ActionTag(PreviewRule* rule, CGFloat size)
     NSStackView* card = Stack(@[], NSUserInterfaceLayoutOrientationVertical, 16);
     AddWide(card, top);
     AddWide(card, PreviewWell(destination, 0));
-    AddWide(page, PreviewSurface(card, 18));
+    AddWide(page, PreviewFrostedSurface(card, 18));
 
     BOOL decided = self.lastDecision != nil;
     BOOL allowed = [self.lastDecision[@"allowed"] boolValue];
@@ -1250,7 +1258,7 @@ static NSStackView* ActionTag(PreviewRule* rule, CGFloat size)
         if(list.arrangedSubviews.count) AddWide(list, PreviewDivider());
         AddWide(list, row);
     }
-    NSView* surface = PreviewSurface(list, 0);
+    NSView* surface = PreviewFrostedSurface(list, 0);
     if(!title) return surface;
     NSStackView* group = Stack(@[], NSUserInterfaceLayoutOrientationVertical, 8);
     NSStackView* heading = Stack(@[SectionTitle(title)], NSUserInterfaceLayoutOrientationHorizontal, 0);
